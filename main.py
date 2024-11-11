@@ -19,12 +19,15 @@ class Alumno(BaseModel):
     promedio: float
 
 #Entidad profesor
+from pydantic import Field
+
 class Profesor(BaseModel):
-    id: int
-    numeroEmpleado: str = Field(..., min_length=1)
+    id: int = Field(..., ge=1)
     nombres: str = Field(..., min_length=1)
     apellidos: str = Field(..., min_length=1)
-    horasClase: int
+    numeroEmpleado: int = Field(..., ge=1)
+    horasClase: int = Field(..., ge=1)
+
 
 # Almacenamiento en memoria
 alumnos_db: List[Alumno] = []
@@ -78,8 +81,12 @@ async def obtener_profesor(id: int):
 
 @app.post("/profesores", response_model=Profesor, status_code=201)
 async def crear_profesor(profesor: Profesor):
-    profesores_db.append(profesor)
-    return profesor
+    try:
+        profesores_db.append(profesor)
+        return profesor
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
 
 @app.put("/profesores/{id}", response_model=Profesor)
 async def actualizar_profesor(id: int, profesor: Profesor):
@@ -92,12 +99,17 @@ async def actualizar_profesor(id: int, profesor: Profesor):
 @app.delete("/profesores/{id}", status_code=200)
 async def eliminar_profesor(id: int):
     global profesores_db
+    profesor = next((al for al in profesores_db if al.id == id), None)
+    if profesor is None:
+        raise HTTPException(status_code=404, detail="Alumno no encontrado")
     profesores_db = [prof for prof in profesores_db if prof.id != id]
     return {"detail": "Profesor eliminado"}
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = [{"loc": err["loc"], "msg": err["msg"]} for err in exc.errors()]
     return JSONResponse(
         status_code=400,
-        content={"detail": "Campos incorrectos o inválidos"},
+        content={"detail": "Campos incorrectos o inválidos", "errors": errors},
     )
